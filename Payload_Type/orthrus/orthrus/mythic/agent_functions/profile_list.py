@@ -3,7 +3,7 @@ from mythic_container.MythicCommandBase import *
 class ProfileListArguments(TaskArguments):
     def __init__(self, command_line):
         super().__init__(command_line)
-        self.args = {}
+        self.args = []
 
     async def parse_arguments(self):
         pass

@@ -6,11 +6,13 @@ import json
 class InstallProfileArguments(TaskArguments):
     def __init__(self, command_line):
         super().__init__(command_line)
-        self.args = {
-            "file": CommandParameter(
-                name="file", type=ParameterType.File, description="profile to install."
+        self.args = [
+            CommandParameter(
+                name="file", 
+                type=ParameterType.File, 
+                description="profile to install."
             )
-        }
+        ]
 
     async def parse_arguments(self):
         if len(self.command_line) > 0:

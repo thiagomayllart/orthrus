@@ -4,11 +4,13 @@ from mythic_container.MythicRPC import *
 class InstallPkgArguments(TaskArguments):
     def __init__(self, command_line):
         super().__init__(command_line)
-        self.args = {
-            "file": CommandParameter(
-                name="file", type=ParameterType.File, description="Pkg to install, must be signed. Can use the TLS cert of the MDM server."
+        self.args = [
+            CommandParameter(
+                name="file", 
+                type=ParameterType.File, 
+                description="Pkg to install, must be signed. Can use the TLS cert of the MDM server."
             )
-        }
+        ]
 
     async def parse_arguments(self):
         if len(self.command_line) > 0:
