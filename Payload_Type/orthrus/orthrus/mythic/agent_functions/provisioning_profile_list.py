@@ -1,4 +1,4 @@
-from mythic_payloadtype_container.MythicCommandBase import *
+from mythic_container.MythicCommandBase import *
 
 class ProvisioningProfileListArguments(TaskArguments):
     def __init__(self, command_line):

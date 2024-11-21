@@ -1,5 +1,5 @@
-from mythic_payloadtype_container.PayloadBuilder import *
-from mythic_payloadtype_container.MythicCommandBase import *
+from mythic_container.PayloadBuilder import *
+from mythic_container.MythicCommandBase import *
 import asyncio
 import os
 from distutils.dir_util import copy_tree
