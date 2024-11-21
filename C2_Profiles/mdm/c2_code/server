@@ -7,6 +7,7 @@ import sys
 import asyncio
 import ssl
 from pathlib import Path
+from sanic.response import redirect
 
 # rookuu's imports
 from base64 import b64decode, b64encode
@@ -27,6 +28,46 @@ mdm_host = None
 lock = None
 proxy_app = Sanic("ReverseProxy")
 
+def forward_request_sync(request, path=""):
+    # Assemble the full URL, including the query string if present
+    if path:
+        full_path = f"{path}?{request.query_string}" if request.query_string else path
+    else:
+        full_path = f"?{request.query_string}" if request.query_string else ""
+    url = f"https://127.0.0.1:443/{full_path}" if path else f"https://127.0.0.1:443/{full_path}"
+
+    try:
+        # Modify the Host header to match the server-url
+        headers = dict(request.headers)
+        headers['Host'] = '127.0.0.1'  # Ensure Host header matches server-url
+
+        resp = requests.request(
+            request.method,
+            url,
+            headers=headers,
+            data=request.body,
+            stream=True,
+            verify=False
+        )
+
+        # Ensure headers do not contain 'Transfer-Encoding: chunked'
+        filtered_headers = {k: v for k, v in resp.headers.items() if k.lower() != "transfer-encoding"}
+
+        # Return the content as is
+        content = resp.content
+        return HTTPResponse(content, status=resp.status_code, headers=filtered_headers)
+    except Exception as e:
+        print(f"Error while forwarding request: {str(e)}")
+        return text("An error occurred.", status=500)
+
+@proxy_app.route('/', methods=['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH'], strict_slashes=False)
+@proxy_app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH'], strict_slashes=False)
+async def catch_all(request, path=""):
+    try:
+        return forward_request_sync(request, path)
+    except Exception as e:
+        print(str(e))
+        return text("An error occurred: "+str(e), status=500)
 
 async def print_flush(message):
     print(message)
@@ -336,41 +377,6 @@ async def agent_message(request, **kwargs):
     except Exception as e:
         print(f"Error while forwarding request: {str(e)}")
         return text("An error occurred.", status=500)
-
-def forward_request_sync(request, path=""):
-    # Assemble the full URL, including the query string if present
-    full_path = f"{path}?{request.query_string}" if request.query_string else path
-    url = f"https://localhost:443/{full_path}"
-    
-    try:
-        resp = requests.request(
-            request.method, 
-            url, 
-            headers=request.headers, 
-            data=request.body, 
-            stream=True, 
-            verify=False
-        )
-
-        # Ensure headers do not contain 'Transfer-Encoding: chunked'
-        headers = {k: v for k, v in resp.headers.items() if k.lower() != "transfer-encoding"}
-
-        # Return the content as is
-        content = resp.content
-        return HTTPResponse(content, status=resp.status_code, headers=headers)
-    except Exception as e:
-        print(f"Error while forwarding request: {str(e)}")
-        return text("An error occurred.", status=500)
-
-
-
-@proxy_app.route('/', methods=['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH'], strict_slashes=False)
-@proxy_app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH'], strict_slashes=False)
-async def catch_all(request, path=""):
-    try:
-        return forward_request_sync(request, path)
-    except Exception as e:
-        print(str(e))
 
 if __name__ == "__main__":
     sys.path.append("/Mythic/mythic")
