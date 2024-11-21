@@ -9,7 +9,7 @@ class mdm(C2Profile):
     is_server_routed = False
     mythic_encrypts = False
     server_folder_path = Path(".") / "c2_code"
-    server_binary_path = server_folder_path / "server.py"
+    server_binary_path = server_folder_path / "server"
     parameters = [
         C2ProfileParameter(
             name="callback_host",
