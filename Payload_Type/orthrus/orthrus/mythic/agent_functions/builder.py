@@ -4,7 +4,7 @@ import asyncio
 import os
 from distutils.dir_util import copy_tree
 import tempfile
-
+import pathlib
 # rookuu's imports
 from collections import defaultdict
 import requests
@@ -22,6 +22,9 @@ class Orthrus(PayloadType):
     build_parameters = {}
     #  the names of the c2 profiles that your agent supports
     c2_profiles = ["mdm"]
+    agent_path = pathlib.Path(".") / "orthrus" / "mythic"
+    agent_code_path = pathlib.Path(".") / "orthrus" / "agent_code"
+    agent_icon_path = agent_path / "agent_functions" / "orthrus.svg"
     # after your class has been instantiated by the mythic_service in this docker container and all required build parameters have values
     # then this function is called to actually build the payload
     async def build(self) -> BuildResponse:
