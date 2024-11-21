@@ -11,6 +11,7 @@ from pathlib import Path
 # rookuu's imports
 from base64 import b64decode, b64encode
 from time import sleep
+from sanic.response import HTTPResponse
 import requests
 import json
 import os
@@ -24,6 +25,8 @@ config = {}
 agents = {}
 mdm_host = None
 lock = None
+proxy_app = Sanic("ReverseProxy")
+
 
 async def print_flush(message):
     print(message)
@@ -69,7 +72,7 @@ async def agent_message(request, **kwargs):
                 agents[udid]['os'] = payload['OSVersion']  
                 agents[udid]['host'] = payload['DeviceName']
                 agents[udid]['tasks'] = {}   
-
+                print("DEBUG1: "+str(agents))
                 with lock:
                     with open("agents.json", "w") as f:
                         json.dump(agents, f)                 
@@ -83,17 +86,22 @@ async def agent_message(request, **kwargs):
                 }
 
                 r = requests.post("https://localhost/v1/commands", auth=('micromdm', 'mythic'), json=command, verify=False)
-
+                print("DEBUG2: "+r.text)
             elif request.json['topic'] == 'mdm.TokenUpdate':
                 payload = plistlib.loads(b64decode(request.json['checkin_event']['raw_payload']))
 
             elif request.json['topic'] == 'mdm.Connect':
+                print("GOT HERE1")
                 # Agent is returning data for some command.
                 payload = plistlib.loads(b64decode(request.json['acknowledge_event']['raw_payload']))
                 await print_flush(payload)
+                print("GOT HERE2")
 
                 if payload['Status'] == 'Acknowledged':
+                    print("GOT HERE3")
+                    print("DEBUG3: "+str(payload))
                     if "ProfileList" in payload:
+                        print("GOT HERE4")
                         for profile in payload['ProfileList']:
                             for payload_content in profile['PayloadContent']:
                                 if payload_content['PayloadType'] == "com.apple.mdm":
@@ -102,11 +110,12 @@ async def agent_message(request, **kwargs):
                                     break
 
                         udid = payload['UDID']
-
+                        print("GOT HERE5")
                         if "callback_uuid" not in agents[udid]:
+                            print("GOT HERE6")
                             # Check if we've already seen that payload ID, if not then we need to do a first checkin.
                             agents[udid]['payload_uuid'] = payload_uuid
-
+                            print("GOT HERE8")
                             checkin_payload = {
                                 "action": "checkin", 
                                 "ip": "127.0.0.1", 
@@ -116,25 +125,26 @@ async def agent_message(request, **kwargs):
                                 "pid": 0, 
                                 "uuid": payload_uuid,
                             }
-                            
+                            print("GOT HERE9")
                             checkin = b64encode((payload_uuid + json.dumps(checkin_payload)).encode())
-
+                            print("GOT HERE10")
                             mythic_response = requests.post(config['mythic_address'], data=checkin, headers={"Mythic": "mdm"}, verify=False)
                             decoded_mythic_response = json.loads(b64decode(mythic_response.text)[36:])
 
                             agents[udid]['callback_uuid'] = decoded_mythic_response['id']
-
+                            print("GOT HERE11")
                             with lock:
                                 with open("agents.json", "w") as f:
                                     json.dump(agents, f)  
 
                             await print_flush("Connect back from payload, assigned {}".format(decoded_mythic_response['id']))
                         else:
+                            print("GOT HERE7")
                             # Handle an actual tasking of ProfileList
 
                             task_uuid = agents[udid]['tasks'][payload['CommandUUID']]
                             callback_uuid = agents[udid]['callback_uuid']
-
+                            print("GOT HERE12")
                             post_response_payload = {
                                 "action": "post_response",
                                 "responses": [
@@ -145,14 +155,14 @@ async def agent_message(request, **kwargs):
                                     }
                                 ]
                             }
-
+                            print("GOT HERE13")
                             checkin = b64encode((agents[udid]['callback_uuid'] + json.dumps(post_response_payload)).encode())
-
+                            print("GOT HERE14")
                             mythic_response = requests.post(config['mythic_address'], data=checkin, headers={"Mythic": "mdm"}, verify=False)
                             decoded_mythic_response = json.loads(b64decode(mythic_response.text)[36:])
-
+                            print("GOT HERE15")
                             await print_flush(decoded_mythic_response)
-
+                            print("GOT HERE16")
                             del agents[udid]['tasks'][payload['CommandUUID']]
                     else:
                         # Every other command comes through here.
@@ -193,18 +203,24 @@ async def agent_message(request, **kwargs):
                                 json.dump(agents, f)  
 
                 elif payload['Status'] == "Idle":
+                    print("GOT HERE17")
+
                     payload = plistlib.loads(b64decode(request.json['acknowledge_event']['raw_payload']))
                     udid = payload['UDID']
+                    print("GOT HERE18")
 
                     get_tasking_payload = {
                         "action": "get_tasking", 
                         "tasking_size": -1
                     }
+                    print("GOT HERE19")
 
                     checkin = b64encode((agents[udid]['callback_uuid'] + json.dumps(get_tasking_payload)).encode())
+                    print("GOT HERE20")
 
                     mythic_response = requests.post(config['mythic_address'], data=checkin, headers={"Mythic": "mdm"}, verify=False)
                     decoded_mythic_response = json.loads(b64decode(mythic_response.text)[36:])
+                    print("GOT HERE21")
 
                     await print_flush(decoded_mythic_response)
                     
@@ -318,21 +334,53 @@ async def agent_message(request, **kwargs):
         return raw('', status=200)
 
     except Exception as e:
-        if config[request.app.name]['debug']:
-            await print_flush("error in agent_message: {}".format(str(e)))
+        print(f"Error while forwarding request: {str(e)}")
+        return text("An error occurred.", status=500)
 
-        return await no_match(request, NotFound)
+def forward_request_sync(request, path=""):
+    # Assemble the full URL, including the query string if present
+    full_path = f"{path}?{request.query_string}" if request.query_string else path
+    url = f"https://localhost:443/{full_path}"
+    
+    try:
+        resp = requests.request(
+            request.method, 
+            url, 
+            headers=request.headers, 
+            data=request.body, 
+            stream=True, 
+            verify=False
+        )
+
+        # Ensure headers do not contain 'Transfer-Encoding: chunked'
+        headers = {k: v for k, v in resp.headers.items() if k.lower() != "transfer-encoding"}
+
+        # Return the content as is
+        content = resp.content
+        return HTTPResponse(content, status=resp.status_code, headers=headers)
+    except Exception as e:
+        print(f"Error while forwarding request: {str(e)}")
+        return text("An error occurred.", status=500)
 
 
+
+@proxy_app.route('/', methods=['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH'], strict_slashes=False)
+@proxy_app.route('/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'OPTIONS', 'PATCH'], strict_slashes=False)
+async def catch_all(request, path=""):
+    try:
+        return forward_request_sync(request, path)
+    except Exception as e:
+        print(str(e))
 
 if __name__ == "__main__":
     sys.path.append("/Mythic/mythic")
 
-    from mythic_c2_container.C2ProfileBase import *
-    from mythic_c2_container.MythicCallbackRPC import *
-
     config_file = open("config.json", 'rb')
     main_config = json.loads(config_file.read().decode('utf-8'))
+    if main_config['use_proxy'] == True:
+        proxy_server = proxy_app.create_server(host="127.0.0.1", port=main_config['proxy_port'], debug=False, return_asyncio_server=True, access_log=True)
+        proxy_task = asyncio.ensure_future(proxy_server)
+
 
     print("Opening config and starting mdm...")
     sys.stdout.flush()

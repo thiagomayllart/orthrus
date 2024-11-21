@@ -29,17 +29,3 @@ async def test(request):
 #   For error: {"status": "error", "error": "your error message here" }
 async def opsec(request):
     return {"status": "success", "message": "No OPSEC Check Performed"}
-
-
-async def force_callback(request):
-    response = RPCResponse()
-    response.status = RPCStatus.Success
-    response.response = "force_callback_response"
-
-    config_file = open("/Mythic/c2_code/config.json", 'rb')
-    main_config = json.loads(config_file.read().decode('utf-8'))
-    print(request)
-
-    r = requests.post("http://localhost:{}/webhook".format(main_config['webhook_port']), json={"callback_uuid": request['message'], "topic": "mythic.force_callback"})
-
-    return response

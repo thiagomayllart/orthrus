@@ -3,5 +3,7 @@
   "mdm_host": "172.17.2.81",
   "tls_cert": "TLS CERT GOES HERE",
   "tls_key": "TLS KEY GOES HERE",
-  "debug": true
+  "debug": true,
+  "proxy_port":81,
+  "use_proxy":true
 }
